@@ -73,32 +73,34 @@ export const microsoft = (options: MicrosoftOptions) => {
 			}
 			const user = decodeJwt(token.idToken) as MicrosoftEntraIDProfile;
 			const profilePhotoSize = options.profilePhotoSize || 48;
-			await betterFetch<ArrayBuffer>(
-				`https://graph.microsoft.com/v1.0/me/photos/${profilePhotoSize}x${profilePhotoSize}/$value`,
-				{
-					headers: {
-						Authorization: `Bearer ${token.accessToken}`,
+			if (!options.disableProfilePhoto) {
+				await betterFetch<ArrayBuffer>(
+					`https://graph.microsoft.com/v1.0/me/photos/${profilePhotoSize}x${profilePhotoSize}/$value`,
+					{
+						headers: {
+							Authorization: `Bearer ${token.accessToken}`,
+						},
+						async onResponse(context) {
+							if (!context.response.ok) {
+								return;
+							}
+							try {
+								const response = context.response.clone();
+								const pictureBuffer = await response.arrayBuffer();
+								const pictureBase64 = base64.encode(pictureBuffer);
+								user.picture = `data:image/jpeg;base64, ${pictureBase64}`;
+							} catch (e) {
+								logger.error(
+									e && typeof e === "object" && "name" in e
+										? (e.name as string)
+										: "",
+									e,
+								);
+							}
+						},
 					},
-					async onResponse(context) {
-						if (options.disableProfilePhoto || !context.response.ok) {
-							return;
-						}
-						try {
-							const response = context.response.clone();
-							const pictureBuffer = await response.arrayBuffer();
-							const pictureBase64 = base64.encode(pictureBuffer);
-							user.picture = `data:image/jpeg;base64, ${pictureBase64}`;
-						} catch (e) {
-							logger.error(
-								e && typeof e === "object" && "name" in e
-									? (e.name as string)
-									: "",
-								e,
-							);
-						}
-					},
-				},
-			);
+				);
+			}
 			const userMap = await options.mapProfileToUser?.(user);
 			return {
 				user: {
